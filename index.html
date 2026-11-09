@@ -82,7 +82,12 @@ const today=()=>new Date().toISOString().slice(0,10);
 try{if(location.hash==='#lector')localStorage.removeItem('cgs_admin');if(location.hash)history.replaceState(null,'',location.pathname);}catch(e){}
 const ADMIN=(()=>{try{return localStorage.getItem('cgs_admin')==='1';}catch(e){return false;}})(),VKEY='cgs_view_v1';
 /* ---------- cifrado del stock.json: AES-256-GCM + PBKDF2 (WebCrypto) ---------- */
-let LOCK=false;
+let LOCK=false,DIP=null;
+const isStd=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone,isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();DIP=e;render();});
+addEventListener('appinstalled',()=>{DIP=null;render();});
+async function instalar(){if(!DIP)return;DIP.prompt();try{await DIP.userChoice;}catch(e){}DIP=null;render();}
+const instCard=()=>isStd()?'':`<div class="card"><h2>📲 Instalar como app</h2>${DIP?'<div class="mut">Queda con su ícono, a pantalla completa y funciona sin conexión.</div><button class="btn" id="ins">Instalar app</button>':isIOS?'<div class="mut">En iPhone, abrila en <b>Safari</b>, tocá <b>Compartir</b> (cuadrado con flecha) y elegí <b>Añadir a pantalla de inicio</b>.</div>':'<div class="mut">Abrí el menú del navegador (⋮) y elegí <b>Instalar app</b> o <b>Añadir a pantalla de inicio</b>. Si no aparece, abrila en Chrome o Edge.</div>'}</div>`;
 const b64=u=>{let t='';for(const x of u)t+=String.fromCharCode(x);return btoa(t);},ub=t=>Uint8Array.from(atob(t),c=>c.charCodeAt(0));
 async function dkey(pw,salt,it){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pw),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:it,hash:'SHA-256'},k,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
 async function enc(o,pw){const salt=crypto.getRandomValues(new Uint8Array(16)),iv=crypto.getRandomValues(new Uint8Array(12)),it=250000,k=await dkey(pw,salt,it);const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},k,new TextEncoder().encode(JSON.stringify(o))));return {v:22,enc:1,kdf:'PBKDF2-SHA256',iter:it,salt:b64(salt),iv:b64(iv),pub:o.pub,data:b64(ct)};}
@@ -166,9 +171,10 @@ function openLoc(tid,ci,gi,toro,serie){const g=findT(tid).cans[ci].gobs[gi];open
 /* ---------- inicio y termo ---------- */
 function vHome(){
  const used=S.termos.reduce((s,t)=>s+tUsed(t),0);
- $('#main').innerHTML=`<div class="card"><h2>${used} pajuelas</h2><div class="mut">${S.termos.length} termos · tocá uno para ver sus goblets</div></div>`+
+ $('#main').innerHTML=`${DIP&&!isStd()?'<button class="btn s" id="insh" style="margin:0 0 12px">📲 Instalar como app</button>':''}<div class="card"><h2>${used} pajuelas</h2><div class="mut">${S.termos.length} termos · tocá uno para ver sus goblets</div></div>`+
  '<div class="tg">'+(S.termos.map(t=>{const u=tUsed(t),c=tCap(t),p=c?Math.round(u*100/c):0;return `<button class="tc" data-o="${esc(t.id)}"><span class="n">${u}</span><b>${esc(t.label)}</b><div class="mut">${esc(t.id)} · ${p}% ocupado de ${c}</div><div class="pb"><i style="width:${p}%"></i></div></button>`;}).join('')||
  '<div class="card">'+(ADMIN?'Todavía no hay termos. Creá uno en <b>Más › Administrar termos</b> o importá tu respaldo en <b>Más › Respaldo</b>.':(LOCK?'El stock está protegido: ingresá la clave en <b>Más</b>.':'Todavía no hay stock publicado. Probá de nuevo en un rato.'))+'</div>')+'</div>';
+ if($('#insh'))$('#insh').onclick=instalar;
  document.querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>openTermo(b.dataset.o));}
 function vTermo(){
  const t=findT(curT);if(!t)return go('termos');curC=Math.min(curC,t.cans.length-1);const c=t.cans[curC];
@@ -280,12 +286,13 @@ function vStock(){
 
 /* ---------- más ---------- */
 function vMas(){
- if(!ADMIN){$('#main').innerHTML=`<div class="card"><h2>Stock de solo lectura</h2><div class="mut">${PUB?'Última actualización: '+fdate(PUB):'Todavía no se publicó ningún stock.'}</div><button class="btn" id="rf">Actualizar ahora</button></div>${LOCK||localStorage.getItem('cgs_vpw')?'<div class="card"><h2>🔒 Clave de acceso</h2><div class="mut">El stock está protegido. Pedile la clave al administrador.</div><input id="vk" type="password" placeholder="Clave" autocomplete="off"><button class="btn" id="vkb">Desbloquear</button></div>':''}<div class="card"><h2>Administrador</h2><input id="adu" placeholder="Usuario" autocapitalize="none" autocomplete="username"><input id="adp" type="password" placeholder="Clave" autocomplete="current-password"><button class="btn s" id="adg">Entrar como administrador</button></div>`;$('#adg').onclick=async()=>{if(await login($('#adu').value,$('#adp').value))location.reload();else toast('Usuario o clave incorrectos.',1);};$('#adp').onkeydown=e=>{if(e.key==='Enter')$('#adg').click();};
+ if(!ADMIN){$('#main').innerHTML=`<div class="card"><h2>Stock de solo lectura</h2><div class="mut">${PUB?'Última actualización: '+fdate(PUB):'Todavía no se publicó ningún stock.'}</div><button class="btn" id="rf">Actualizar ahora</button></div>${LOCK||localStorage.getItem('cgs_vpw')?'<div class="card"><h2>🔒 Clave de acceso</h2><div class="mut">El stock está protegido. Pedile la clave al administrador.</div><input id="vk" type="password" placeholder="Clave" autocomplete="off"><button class="btn" id="vkb">Desbloquear</button></div>':''}<div class="card"><h2>Administrador</h2><input id="adu" placeholder="Usuario" autocapitalize="none" autocomplete="username"><input id="adp" type="password" placeholder="Clave" autocomplete="current-password"><button class="btn s" id="adg">Entrar como administrador</button></div>${instCard()}`;if($('#ins'))$('#ins').onclick=instalar;$('#adg').onclick=async()=>{if(await login($('#adu').value,$('#adp').value))location.reload();else toast('Usuario o clave incorrectos.',1);};$('#adp').onkeydown=e=>{if(e.key==='Enter')$('#adg').click();};
  if($('#vkb'))$('#vkb').onclick=async()=>{try{localStorage.setItem('cgs_vpw',$('#vk').value);}catch(e){}const ok=await syncView();toast(ok?'Desbloqueado.':'Clave incorrecta.',!ok);};
  $('#rf').onclick=async()=>{const ok=await syncView();toast(ok?'Datos actualizados.':'No se pudo actualizar (sin conexión o sin datos publicados).',!ok);};return;}
  if(more==='hist')return vHist();if(more==='cfg')return vCfg();if(more==='bk')return vBk();
- $('#main').innerHTML=`<button class="tc" data-m="hist"><b>🕘 Historial</b><div class="mut">Últimos movimientos</div></button><button class="tc" data-m="cfg"><b>⚙️ Administrar termos</b><div class="mut">Crear, editar o eliminar termos</div></button><button class="tc" data-m="bk"><b>💾 Respaldo</b><div class="mut">Descargar o importar tus datos</div></button><button class="tc" id="adx"><b>🚪 Salir del modo administrador</b><div class="mut">Volver a solo lectura</div></button>`;
+ $('#main').innerHTML=`${instCard()}<button class="tc" data-m="hist"><b>🕘 Historial</b><div class="mut">Últimos movimientos</div></button><button class="tc" data-m="cfg"><b>⚙️ Administrar termos</b><div class="mut">Crear, editar o eliminar termos</div></button><button class="tc" data-m="bk"><b>💾 Respaldo</b><div class="mut">Descargar o importar tus datos</div></button><button class="tc" id="adx"><b>🚪 Salir del modo administrador</b><div class="mut">Volver a solo lectura</div></button>`;
  document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{more=b.dataset.m;render();scrollTo(0,0);});
+ if($('#ins'))$('#ins').onclick=instalar;
  $('#adx').onclick=()=>{try{localStorage.removeItem('cgs_admin');}catch(e){}location.reload();};}
 function vHist(){const rows=S.log.slice().reverse().slice(0,150);
  $('#main').innerHTML=`<div class="card"><div class="mut">Últimos ${rows.length} movimientos</div><table>${rows.map(r=>`<tr><td style="color:${r.tipo==='ingreso'?'var(--ok)':r.tipo==='egreso'?'var(--bad)':'var(--ac)'};font-size:18px">${r.tipo==='ingreso'?'▲':r.tipo==='egreso'?'▼':'⇄'}</td><td><b>${r.cant}</b> ${esc(r.toro)} [${esc(r.serie)}]<div class="mut">${esc(r.ubic)} · ${new Date(r.f).toLocaleString('es-AR')}</div></td></tr>`).join('')||'<tr><td class="mut">Sin movimientos.</td></tr>'}</table></div>`;}
